@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Windows 控制台默认编码是 cp1252，而源码里有中文输出（print），不强制 UTF-8
+  # 会在 import 阶段抛 UnicodeEncodeError，导致全部测试 import 失败。
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        shell: bash
+
+      - name: Verify tkinter is importable
+        run: python -c "import tkinter; print('tkinter OK', tkinter.TkVersion)"
+
+      # Linux runner 是 headless，tkinter 创建窗口需要一个虚拟显示，用 xvfb 提供。
+      - name: Run tests (Linux, headless via xvfb)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run -a python -m unittest discover -s tests -v
+
+      # macOS / Windows runner 自带可用的窗口环境，直接跑。
+      - name: Run tests (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: python -m unittest discover -s tests -v
+        shell: bash
